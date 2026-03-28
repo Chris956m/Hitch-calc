@@ -2,73 +2,82 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
-# --- App Styling ---
-st.set_page_config(page_title="Oilfield Hitch Calc", page_icon="🛢️")
-st.title("🛢️ Oilfield Hitch Calculator")
-st.markdown("Plan your year and see exactly when you'll be home.")
+# --- Theme Configuration ---
+st.set_page_config(page_title="Hitch Tracker", page_icon="📅")
 
-# --- Sidebar Inputs ---
+# Sidebar Theme Selector
+st.sidebar.header("App Style")
+theme_choice = st.sidebar.radio("Choose Theme:", ["Classic", "Black & Gold"])
+
+# Apply Custom CSS for the Black & Gold Theme
+if theme_choice == "Black & Gold":
+    primary_color = "#FFD700"  # Gold
+    bg_color = "#0E1117"       # Dark Charcoal
+    st.markdown(f"""
+        <style>
+        .stApp {{ background-color: {bg_color}; color: white; }}
+        h1, h2, h3 {{ color: {primary_color} !important; }}
+        .stMetric {{ background-color: #1c1c1c; padding: 15px; border-radius: 10px; border: 1px solid {primary_color}; }}
+        button {{ background-color: {primary_color} !important; color: black !important; font-weight: bold; }}
+        thead tr th {{ background-color: #1c1c1c !important; color: {primary_color} !important; }}
+        </style>
+    """, unsafe_allow_html=True)
+else:
+    primary_color = "#FF4B4B" # Default Streamlit Red
+
+st.title("📅 Oilfield Hitch Tracker")
+
+# --- Sidebar Logic ---
+st.sidebar.markdown("---")
 st.sidebar.header("Schedule Settings")
-start_date = st.sidebar.date_input("When is your next 'Day 1' of work?", datetime.now())
-weeks_on = st.sidebar.number_input("Weeks ON (Hitch)", min_value=1, value=3)
+start_date = st.sidebar.date_input("Next 'Day 1' of work?", datetime(2026, 3, 31))
+weeks_on = st.sidebar.number_input("Weeks ON", min_value=1, value=3)
 weeks_off = st.sidebar.number_input("Weeks OFF", min_value=1, value=1)
-year_to_calc = st.sidebar.selectbox("Select Year", [2026, 2027])
+
+# --- Holiday Data 2026 ---
+holidays_2026 = {
+    "Easter": datetime(2026, 4, 5), "Mother's Day": datetime(2026, 5, 10),
+    "Memorial Day": datetime(2026, 5, 25), "Father's Day": datetime(2026, 6, 21),
+    "July 4th": datetime(2026, 7, 4), "Labor Day": datetime(2026, 9, 7),
+    "Halloween": datetime(2026, 10, 31), "Thanksgiving": datetime(2026, 11, 26),
+    "Christmas": datetime(2026, 12, 25)
+}
 
 # --- Calculation Logic ---
-def get_full_schedule(start, w_on, w_off, year):
-    schedule = []
+def get_hitch_details(start, w_on, w_off):
+    schedule, holiday_report = [], []
     current = datetime.combine(start, datetime.min.time())
-    end_of_year = datetime(year, 12, 31)
-    
-    while current <= end_of_year:
-        work_end = current + timedelta(weeks=w_on, days=-1)
-        off_start = work_end + timedelta(days=1)
-        off_end = off_start + timedelta(weeks=w_off, days=-1)
+    today = datetime.now()
+    status_now, days_left = "Not Started", 0
+
+    for _ in range(15): # Calculate 15 rotations (~full year)
+        work_end = current + timedelta(weeks=w_on, days=-1, hours=23, minutes=59)
+        off_start = work_end + timedelta(seconds=1)
+        off_end = off_start + timedelta(weeks=w_off, days=-1, hours=23, minutes=59)
         
-        schedule.append({
-            "Status": "WORK 🛠️",
-            "Start": current.strftime("%b %d, %Y"),
-            "End": work_end.strftime("%b %d, %Y")
-        })
-        schedule.append({
-            "Status": "OFF 🏠",
-            "Start": off_start.strftime("%b %d, %Y"),
-            "End": off_end.strftime("%b %d, %Y")
-        })
-        current = off_end + timedelta(days=1)
-    return schedule
+        if current <= today <= work_end:
+            status_now, days_left = "ON HITCH 🛠️", (work_end - today).days + 1
+        elif off_start <= today <= off_end:
+            status_now, days_left = "OFF DUTY 🏠", (off_end - today).days + 1
 
-# --- Display Results ---
-data = get_full_schedule(start_date, weeks_on, weeks_off, year_to_calc)
-df = pd.DataFrame(data)
+        for name, date in holidays_2026.items():
+            if current <= date <= work_end: holiday_report.append({"Holiday": name, "Status": "AT WORK 🛠️"})
+            elif off_start <= date <= off_end: holiday_report.append({"Holiday": name, "Status": "AT HOME 🏠"})
 
-st.table(df)
+        schedule.append({"Status": "WORK 🛠️", "Start": current.strftime("%b %d"), "End": work_end.strftime("%b %d")})
+        schedule.append({"Status": "OFF 🏠", "Start": off_start.strftime("%b %d"), "End": off_end.strftime("%b %d")})
+        current = off_end + timedelta(seconds=1)
+        
+    return schedule, status_now, days_left, holiday_report
 
-# --- Download Feature ---
-csv = df.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="Download Schedule as CSV",
-    data=csv,
-    file_name=f'hitch_schedule_{year_to_calc}.csv',
-    mime='text/csv',
-)
-# --- Email Feature ---
-st.markdown("---")
-st.subheader("📬 Send Schedule")
-email_recipient = st.text_input("Recipient Email (e.g., wife@email.com or boss@oilfield.com)")
+data, current_status, time_remaining, holiday_report = get_hitch_details(start_date, weeks_on, weeks_off)
 
-# Format the schedule into a readable text block for the email
-schedule_text = "My 2026 Hitch Schedule:\n\n"
-for item in data:
-    schedule_text += f"{item['Status']}: {item['Start']} to {item['End']}\n"
+# --- UI Display ---
+st.metric("Current Status", current_status)
+st.metric("Days Remaining", f"{time_remaining} Days")
 
-# Create a 'Mailto' link
-import urllib.parse
-subject = urllib.parse.quote("My Work Schedule")
-body = urllib.parse.quote(schedule_text)
-mailto_link = f"mailto:{email_recipient}?subject={subject}&body={body}"
+st.markdown("### 🏖️ Holiday Forecast")
+st.dataframe(pd.DataFrame(holiday_report).drop_duplicates(subset=['Holiday']), use_container_width=True, hide_index=True)
 
-if email_recipient:
-    st.markdown(f'<a href="{mailto_link}" style="text-decoration:none;"><button style="width:100%; border-radius:5px; background-color:#FF4B4B; color:white; padding:10px; border:none; cursor:pointer;">📧 Send Schedule via Email</button></a>', unsafe_allow_html=True)
-else:
-    st.info("Enter an email address above to enable the send button.")
+st.markdown("### 🗓️ Full Schedule")
+st.table(pd.DataFrame(data))
