@@ -52,3 +52,23 @@ st.download_button(
     file_name=f'hitch_schedule_{year_to_calc}.csv',
     mime='text/csv',
 )
+# --- Email Feature ---
+st.markdown("---")
+st.subheader("📬 Send Schedule")
+email_recipient = st.text_input("Recipient Email (e.g., wife@email.com or boss@oilfield.com)")
+
+# Format the schedule into a readable text block for the email
+schedule_text = "My 2026 Hitch Schedule:\n\n"
+for item in data:
+    schedule_text += f"{item['Status']}: {item['Start']} to {item['End']}\n"
+
+# Create a 'Mailto' link
+import urllib.parse
+subject = urllib.parse.quote("My Work Schedule")
+body = urllib.parse.quote(schedule_text)
+mailto_link = f"mailto:{email_recipient}?subject={subject}&body={body}"
+
+if email_recipient:
+    st.markdown(f'<a href="{mailto_link}" style="text-decoration:none;"><button style="width:100%; border-radius:5px; background-color:#FF4B4B; color:white; padding:10px; border:none; cursor:pointer;">📧 Send Schedule via Email</button></a>', unsafe_allow_html=True)
+else:
+    st.info("Enter an email address above to enable the send button.")
